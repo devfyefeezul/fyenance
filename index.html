@@ -491,9 +491,17 @@
                     </div>
 
                     <!-- Conditional Fields for Tax Relief -->
-                    <div id="reliefFields" class="hidden space-y-1">
-                        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Relief Sub-Category</label>
-                        <input type="text" id="formReliefCode" placeholder="e.g., Medical, Lifestyle, SSPN" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                    <div id="reliefFields" class="hidden space-y-3">
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Relief Sub-Category</label>
+                            <input type="text" id="formReliefCode" placeholder="e.g., Medical, Lifestyle, SSPN" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                        </div>
+                        
+                        <div id="reliefReceiptWrapper" class="hidden">
+                            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Upload Receipt (Drive)</label>
+                            <input type="file" id="formReliefReceipt" accept="image/*,.pdf" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-bold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all">
+                            <p class="text-[9px] text-slate-400 mt-1 flex items-center gap-1"><i class="fa-brands fa-google-drive"></i> Auto-saves to /fyenance/relief/</p>
+                        </div>
                     </div>
 
                     <div>
@@ -1167,7 +1175,10 @@
                                 <h4 class="text-xs font-bold text-slate-900">${escapeHtml(item.title)}</h4>
                                 <span class="text-[9px] font-semibold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">${item.category}</span>
                             </div>
-                            <p class="text-[10px] text-slate-400 mt-0.5">${item.reliefCode ? `Category: ${escapeHtml(item.reliefCode)}` : 'Tax relief claimable'}</p>
+                            <p class="text-[10px] text-slate-400 mt-0.5">
+                                ${item.reliefCode ? `Category: ${escapeHtml(item.reliefCode)}` : 'Tax relief claimable'}
+                                ${item.receiptId ? ` &bull; <i class="fa-solid fa-paperclip text-indigo-400" title="Receipt Uploaded"></i>` : ''}
+                            </p>
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
@@ -1397,6 +1408,9 @@
             document.getElementById('formId').value = '';
             document.getElementById('modalTitle').textContent = 'Add Item';
             
+            const receiptInput = document.getElementById('formReliefReceipt');
+            if (receiptInput) receiptInput.value = '';
+            
             const defaultType = (currentTab === 'home' || currentTab === 'settings') ? 'expense' : currentTab;
             document.getElementById('formType').value = defaultType;
             
@@ -1463,48 +1477,101 @@
             categorySelect.innerHTML = categories.map(cat => `<option value="${cat}">${cat}</option>`).join('');
 
             document.getElementById('commitFields').className = type === 'commit' ? 'grid grid-cols-2 gap-3' : 'hidden';
-            document.getElementById('reliefFields').className = type === 'relief' ? 'block' : 'hidden';
+            document.getElementById('reliefFields').className = type === 'relief' ? 'block space-y-3' : 'hidden';
+            
+            const receiptWrapper = document.getElementById('reliefReceiptWrapper');
+            if (type === 'relief' && typeof gapiAccessToken !== 'undefined' && gapiAccessToken) {
+                receiptWrapper.classList.remove('hidden');
+            } else if (receiptWrapper) {
+                receiptWrapper.classList.add('hidden');
+            }
         }
 
-        function handleFormSubmit(e) {
+        async function handleFormSubmit(e) {
             e.preventDefault();
 
-            const id = document.getElementById('formId').value;
-            const type = document.getElementById('formType').value;
-            const title = document.getElementById('formTitle').value.trim();
-            const amount = parseFloat(document.getElementById('formAmount').value) || 0;
-            const category = document.getElementById('formCategory').value;
-            const notes = document.getElementById('formNotes').value.trim();
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalBtnText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Saving...';
+            submitBtn.disabled = true;
 
-            const newItem = {
-                id: id || Date.now().toString(),
-                type,
-                title,
-                amount,
-                category,
-                notes
-            };
+            try {
+                const id = document.getElementById('formId').value;
+                const type = document.getElementById('formType').value;
+                const title = document.getElementById('formTitle').value.trim();
+                const amount = parseFloat(document.getElementById('formAmount').value) || 0;
+                const category = document.getElementById('formCategory').value;
+                const notes = document.getElementById('formNotes').value.trim();
 
-            if (type === 'commit') {
-                newItem.dueDate = parseInt(document.getElementById('formDueDate').value) || null;
-                newItem.status = document.getElementById('formStatus').value;
-            } else if (type === 'relief') {
-                newItem.reliefCode = document.getElementById('formReliefCode').value.trim();
-            } else if (type === 'expense') {
-                newItem.date = new Date().toISOString().slice(0, 10);
+                let receiptId = null;
+
+                // Handle Google Drive Receipt Upload for Reliefs
+                if (type === 'relief' && typeof gapiAccessToken !== 'undefined' && gapiAccessToken) {
+                    const fileInput = document.getElementById('formReliefReceipt');
+                    if (fileInput && fileInput.files.length > 0) {
+                        const file = fileInput.files[0];
+                        showToast('Uploading receipt to Drive...', 'fa-solid fa-cloud-arrow-up animate-pulse text-indigo-400');
+                        
+                        // Clean strings for safe file naming
+                        const safeStr = (str) => (str || 'Unknown').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_');
+                        const year = new Date().getFullYear().toString();
+                        const subcat = document.getElementById('formReliefCode').value.trim();
+                        const ext = file.name.includes('.') ? file.name.substring(file.name.lastIndexOf('.')) : '';
+                        
+                        // Format: {year}_{category}_{subcategory}_title
+                        const newFilename = `${year}_${safeStr(category)}_${safeStr(subcat)}_${safeStr(title)}${ext}`;
+
+                        // Resolve Path and Upload
+                        const folderId = await resolveDrivePath(['fyenance', 'relief', year]);
+                        const uploadData = await uploadReceiptToDrive(file, folderId, newFilename);
+                        receiptId = uploadData.id;
+                    }
+                }
+
+                const newItem = {
+                    id: id || Date.now().toString(),
+                    type,
+                    title,
+                    amount,
+                    category,
+                    notes
+                };
+
+                if (type === 'commit') {
+                    newItem.dueDate = parseInt(document.getElementById('formDueDate').value) || null;
+                    newItem.status = document.getElementById('formStatus').value;
+                } else if (type === 'relief') {
+                    newItem.reliefCode = document.getElementById('formReliefCode').value.trim();
+                    if (receiptId) newItem.receiptId = receiptId; // Preserve Drive ID
+                } else if (type === 'expense') {
+                    newItem.date = new Date().toISOString().slice(0, 10);
+                }
+
+                if (id) {
+                    const index = items.findIndex(i => i.id === id);
+                    if (index !== -1) {
+                        // Preserve existing receipt ID if not overwriting
+                        if (type === 'relief' && !receiptId && items[index].receiptId) {
+                            newItem.receiptId = items[index].receiptId;
+                        }
+                        items[index] = newItem;
+                    }
+                } else {
+                    items.push(newItem);
+                }
+
+                saveState();
+                render();
+                closeModal();
+                showToast(id ? 'Entry updated' : 'Entry added');
+
+            } catch (err) {
+                console.error("Save Error:", err);
+                showToast('Failed to save entry', 'fa-solid fa-triangle-exclamation text-rose-400');
+            } finally {
+                submitBtn.innerHTML = originalBtnText;
+                submitBtn.disabled = false;
             }
-
-            if (id) {
-                const index = items.findIndex(i => i.id === id);
-                if (index !== -1) items[index] = newItem;
-            } else {
-                items.push(newItem);
-            }
-
-            saveState();
-            render();
-            closeModal();
-            showToast(id ? 'Entry updated' : 'Entry added');
         }
 
         function deleteItem(id) {
@@ -1588,6 +1655,68 @@
                 btn.innerHTML = `<i class="fa-brands fa-google-drive text-[11px]"></i> Link Google Drive`;
                 btn.className = 'w-full py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2';
             }
+            // Trigger UI update in open modals if state changes
+            if (!document.getElementById('crudModal').classList.contains('hidden')) {
+                updateFormFields();
+            }
+        }
+
+        // --- Drive Helper Functions for File/Folder Management ---
+
+        async function getOrCreateDriveFolder(folderName, parentId = null) {
+            let query = `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and trashed=false`;
+            query += parentId ? ` and '${parentId}' in parents` : ` and 'root' in parents`;
+
+            const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)`, {
+                headers: { 'Authorization': `Bearer ${gapiAccessToken}` }
+            });
+            const searchData = await searchRes.json();
+
+            if (searchData.files && searchData.files.length > 0) return searchData.files[0].id;
+
+            const metadata = { name: folderName, mimeType: 'application/vnd.google-apps.folder', parents: parentId ? [parentId] : [] };
+            const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${gapiAccessToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(metadata)
+            });
+            const createData = await createRes.json();
+            return createData.id;
+        }
+
+        async function resolveDrivePath(foldersArray) {
+            let currentParentId = null;
+            for (const folder of foldersArray) {
+                currentParentId = await getOrCreateDriveFolder(folder, currentParentId);
+            }
+            return currentParentId;
+        }
+
+        async function uploadReceiptToDrive(file, folderId, newFilename) {
+            const metadata = { name: newFilename, parents: [folderId] };
+
+            // 1. Initiate Resumable Upload Session
+            const initRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${gapiAccessToken}`,
+                    'Content-Type': 'application/json',
+                    'X-Upload-Content-Type': file.type || 'application/octet-stream',
+                    'X-Upload-Content-Length': file.size.toString()
+                },
+                body: JSON.stringify(metadata)
+            });
+            
+            const uploadUrl = initRes.headers.get('Location');
+            if (!uploadUrl) throw new Error("Failed to initialize Google Drive upload");
+
+            // 2. Upload Binary File Data
+            const uploadRes = await fetch(uploadUrl, {
+                method: 'PUT',
+                headers: { 'Content-Length': file.size.toString() },
+                body: file
+            });
+            return await uploadRes.json();
         }
 
         function exportToLocalDrive() {
