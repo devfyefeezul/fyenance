@@ -15,6 +15,8 @@
     <title>Fyenance - Expense, Commitment & Tax Relief Tracker</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- localForage for IndexedDB storage -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <!-- Inter Font -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- FontAwesome Icons -->
@@ -613,19 +615,19 @@
     <script>
         // Application State & Data Setup
         let currentTab = 'home';
-        let currencySymbol = localStorage.getItem('fyenance_currency') || 'RM';
-        let monthlyBudget = parseFloat(localStorage.getItem('fyenance_budget')) || 4500.00;
+        let currencySymbol = 'RM';
+        let monthlyBudget = 4500.00;
         let selectedCategoryManageType = 'expense';
         
-        // Initial Seed Categories or Load Configured Categories
-        let categoriesMap = JSON.parse(localStorage.getItem('fyenance_categories')) || {
+        // Initial Seed Categories (will be overwritten by DB if exists)
+        let categoriesMap = {
             expense: ['Food', 'Utilities', 'Shopping', 'Transport', 'Entertainment', 'Healthcare', 'Other'],
             commit: ['Housing', 'Loan', 'Subscriptions', 'Insurance', 'Savings', 'Other'],
             relief: ['Lifestyle', 'Medical', 'Education', 'Insurance', 'Pensions', 'Donations', 'Other']
         };
 
-        // Initial Seed Records if Empty
-        let items = JSON.parse(localStorage.getItem('fyenance_data')) || [
+        // Initial Seed Records (will be overwritten by DB if exists)
+        let items = [
             { id: '1', type: 'commit', title: 'Housing Rent', amount: 1400.00, category: 'Housing', dueDate: 1, status: 'Paid', notes: 'Monthly rent' },
             { id: '2', type: 'commit', title: 'Car Loan', amount: 380.00, category: 'Loan', dueDate: 15, status: 'Unpaid', notes: 'Auto Finance' },
             { id: '3', type: 'expense', title: 'Groceries Store', amount: 125.50, category: 'Food', date: '2026-10-10', notes: 'Weekly household' },
@@ -634,13 +636,49 @@
             { id: '6', type: 'relief', title: 'New Laptop (Work)', amount: 1500.00, category: 'Lifestyle', reliefCode: 'Tech Equipment', notes: 'Purchased March' }
         ];
 
-        document.addEventListener('DOMContentLoaded', () => {
-            render();
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Configure localForage to use IndexedDB
+            localforage.config({
+                name: 'FyenanceApp',
+                storeName: 'fyenance_datastore',
+                description: 'Offline database for Fyenance'
+            });
+
+            // MIGRATION: Move old localStorage data to IndexedDB to prevent data loss
+            if (localStorage.getItem('fyenance_data') && !(await localforage.getItem('fyenance_data'))) {
+                console.log("Migrating data from localStorage to IndexedDB...");
+                items = JSON.parse(localStorage.getItem('fyenance_data')) || items;
+                monthlyBudget = parseFloat(localStorage.getItem('fyenance_budget')) || 4500.00;
+                currencySymbol = localStorage.getItem('fyenance_currency') || 'RM';
+                categoriesMap = JSON.parse(localStorage.getItem('fyenance_categories')) || categoriesMap;
+                
+                // Save to new DB and clear old blocking storage
+                saveState();
+                localStorage.removeItem('fyenance_data');
+                localStorage.removeItem('fyenance_budget');
+                localStorage.removeItem('fyenance_currency');
+                localStorage.removeItem('fyenance_categories');
+            } else {
+                // NORMAL LOAD: Fetch data asynchronously from IndexedDB
+                const savedItems = await localforage.getItem('fyenance_data');
+                if (savedItems) items = savedItems;
+
+                const savedBudget = await localforage.getItem('fyenance_budget');
+                if (savedBudget) monthlyBudget = parseFloat(savedBudget);
+
+                const savedCurrency = await localforage.getItem('fyenance_currency');
+                if (savedCurrency) currencySymbol = savedCurrency;
+
+                const savedCategories = await localforage.getItem('fyenance_categories');
+                if (savedCategories) categoriesMap = savedCategories;
+            }
+
             document.getElementById('settingsBudget').value = monthlyBudget;
             document.getElementById('settingsCurrency').value = currencySymbol;
             updateCurrencyLabels();
             renderCategoryManagement();
             initPWA();
+            render(); // Initial render only after DB is fully loaded
         });
 
         // ================= PWA & OFFLINE CAPABILITIES =================
@@ -721,12 +759,12 @@
             });
         }
 
-        // Save State
+        // Save State to IndexedDB
         function saveState() {
-            localStorage.setItem('fyenance_data', JSON.stringify(items));
-            localStorage.setItem('fyenance_budget', monthlyBudget);
-            localStorage.setItem('fyenance_currency', currencySymbol);
-            localStorage.setItem('fyenance_categories', JSON.stringify(categoriesMap));
+            localforage.setItem('fyenance_data', items);
+            localforage.setItem('fyenance_budget', monthlyBudget);
+            localforage.setItem('fyenance_currency', currencySymbol);
+            localforage.setItem('fyenance_categories', categoriesMap);
             updateCurrencyLabels();
         }
 
@@ -1077,25 +1115,32 @@
             }
 
             container.innerHTML = expenses.map(item => `
-                <div class="bg-white border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between shadow-sm group">
-                    <div class="flex items-center gap-3">
-                        <div class="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-                            <i class="fa-solid fa-receipt text-xs"></i>
-                        </div>
-                        <div>
-                            <div class="flex items-center gap-2">
-                                <h4 class="text-xs font-bold text-slate-900">${escapeHtml(item.title)}</h4>
-                                <span class="text-[9px] font-semibold bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full">${item.category}</span>
-                            </div>
-                            <p class="text-[10px] text-slate-400 mt-0.5">${item.date || ''}${item.notes ? ` • ${escapeHtml(item.notes)}` : ''}</p>
-                        </div>
+                <div class="relative w-full rounded-2xl bg-slate-200 overflow-hidden">
+                    <!-- Action Buttons Background Layer -->
+                    <div class="absolute right-0 top-0 bottom-0 flex items-center justify-end px-3 gap-1.5 z-0">
+                        <button onclick="editItem('${item.id}')" class="w-8 h-8 rounded-xl bg-white text-slate-500 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                        <button onclick="deleteItem('${item.id}')" class="w-8 h-8 rounded-xl bg-rose-50 text-rose-500 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-trash text-[10px]"></i></button>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs font-extrabold text-slate-900">${formatCurrency(item.amount)}</span>
-                        <div class="flex items-center gap-1 opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onclick="editItem('${item.id}')" class="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center"><i class="fa-solid fa-pen text-[10px]"></i></button>
-                            <button onclick="deleteItem('${item.id}')" class="w-7 h-7 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                    
+                    <!-- Swipeable Foreground Card -->
+                    <div class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar relative z-10 w-full h-full">
+                        <div class="w-full shrink-0 snap-start bg-white border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between shadow-sm">
+                            <div class="flex items-center gap-3 min-w-0 flex-1 pr-3">
+                                <div class="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                                    <i class="fa-solid fa-receipt text-xs"></i>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center gap-2">
+                                        <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(item.title)}</h4>
+                                        <span class="text-[9px] font-semibold bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full shrink-0">${item.category}</span>
+                                    </div>
+                                    <p class="text-[10px] text-slate-400 mt-0.5 truncate">${item.date || ''}${item.notes ? ` • ${escapeHtml(item.notes)}` : ''}</p>
+                                </div>
+                            </div>
+                            <span class="text-xs font-extrabold text-slate-900 shrink-0">${formatCurrency(item.amount)}</span>
                         </div>
+                        <!-- Spacer to allow scrolling left to reveal the 2 buttons underneath -->
+                        <div class="w-[96px] shrink-0 snap-end"></div>
                     </div>
                 </div>
             `).join('');
@@ -1120,25 +1165,32 @@
             container.innerHTML = commits.map(item => {
                 const isPaid = item.status === 'Paid';
                 return `
-                    <div class="bg-white border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between shadow-sm group">
-                        <div class="flex items-center gap-3">
-                            <button onclick="toggleCommitStatus('${item.id}')" class="w-9 h-9 rounded-xl ${isPaid ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'} flex items-center justify-center shrink-0 transition-all hover:scale-105" title="Toggle status">
-                                <i class="fa-solid ${isPaid ? 'fa-check' : 'fa-clock'} text-xs"></i>
-                            </button>
-                            <div>
-                                <div class="flex items-center gap-2">
-                                    <h4 class="text-xs font-bold text-slate-900">${escapeHtml(item.title)}</h4>
-                                    <span class="text-[9px] font-semibold ${isPaid ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'} px-2 py-0.5 rounded-full">${item.status}</span>
-                                </div>
-                                <p class="text-[10px] text-slate-400 mt-0.5">${item.category} • Due <strong>${item.dueDate || '-'}th</strong></p>
-                            </div>
+                    <div class="relative w-full rounded-2xl bg-slate-200 overflow-hidden">
+                        <!-- Action Buttons Background Layer -->
+                        <div class="absolute right-0 top-0 bottom-0 flex items-center justify-end px-3 gap-1.5 z-0">
+                            <button onclick="editItem('${item.id}')" class="w-8 h-8 rounded-xl bg-white text-slate-500 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                            <button onclick="deleteItem('${item.id}')" class="w-8 h-8 rounded-xl bg-rose-50 text-rose-500 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-trash text-[10px]"></i></button>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-extrabold text-slate-900">${formatCurrency(item.amount)}</span>
-                            <div class="flex items-center gap-1 opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onclick="editItem('${item.id}')" class="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center"><i class="fa-solid fa-pen text-[10px]"></i></button>
-                                <button onclick="deleteItem('${item.id}')" class="w-7 h-7 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                        
+                        <!-- Swipeable Foreground Card -->
+                        <div class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar relative z-10 w-full h-full">
+                            <div class="w-full shrink-0 snap-start bg-white border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between shadow-sm">
+                                <div class="flex items-center gap-3 min-w-0 flex-1 pr-3">
+                                    <button onclick="toggleCommitStatus('${item.id}')" class="w-9 h-9 rounded-xl ${isPaid ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'} flex items-center justify-center shrink-0 active:scale-90 transition-transform" title="Toggle status">
+                                        <i class="fa-solid ${isPaid ? 'fa-check' : 'fa-clock'} text-xs"></i>
+                                    </button>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(item.title)}</h4>
+                                            <span class="text-[9px] font-semibold ${isPaid ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'} px-2 py-0.5 rounded-full shrink-0">${item.status}</span>
+                                        </div>
+                                        <p class="text-[10px] text-slate-400 mt-0.5 truncate">${item.category} • Due <strong>${item.dueDate || '-'}th</strong></p>
+                                    </div>
+                                </div>
+                                <span class="text-xs font-extrabold text-slate-900 shrink-0">${formatCurrency(item.amount)}</span>
                             </div>
+                            <!-- Spacer to allow scrolling left to reveal the 2 buttons underneath -->
+                            <div class="w-[96px] shrink-0 snap-end"></div>
                         </div>
                     </div>
                 `;
@@ -1164,33 +1216,46 @@
                 showEmptyState(false, container);
             }
 
-            container.innerHTML = reliefs.map(item => `
-                <div class="bg-white border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between shadow-sm group">
-                    <div class="flex items-center gap-3">
-                        <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                            <i class="fa-solid fa-shield-halved text-xs"></i>
+            container.innerHTML = reliefs.map(item => {
+                const hasReceipt = !!item.receiptId;
+                // Spacer width dynamically adjusts based on whether we have 3 buttons (View, Edit, Delete) or 2 (Edit, Delete)
+                const spacerWidth = hasReceipt ? 'w-[136px]' : 'w-[96px]';
+                
+                return `
+                    <div class="relative w-full rounded-2xl bg-slate-200 overflow-hidden">
+                        <!-- Action Buttons Background Layer -->
+                        <div class="absolute right-0 top-0 bottom-0 flex items-center justify-end px-3 gap-1.5 z-0">
+                            ${hasReceipt ? `<button onclick="viewReceipt('${item.receiptId}')" class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-eye text-[10px]"></i></button>` : ''}
+                            <button onclick="editItem('${item.id}')" class="w-8 h-8 rounded-xl bg-white text-slate-500 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                            <button onclick="deleteItem('${item.id}')" class="w-8 h-8 rounded-xl bg-rose-50 text-rose-500 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-trash text-[10px]"></i></button>
                         </div>
-                        <div>
-                            <div class="flex items-center gap-2">
-                                <h4 class="text-xs font-bold text-slate-900">${escapeHtml(item.title)}</h4>
-                                <span class="text-[9px] font-semibold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">${item.category}</span>
+                        
+                        <!-- Swipeable Foreground Card -->
+                        <div class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar relative z-10 w-full h-full">
+                            <div class="w-full shrink-0 snap-start bg-white border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between shadow-sm">
+                                <div class="flex items-center gap-3 min-w-0 flex-1 pr-3">
+                                    <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                                        <i class="fa-solid fa-shield-halved text-xs"></i>
+                                    </div>
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(item.title)}</h4>
+                                            <span class="text-[9px] font-semibold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full shrink-0">${item.category}</span>
+                                        </div>
+                                        <p class="text-[10px] text-slate-400 mt-0.5 truncate flex items-center gap-1">
+                                            <span>${item.reliefCode ? `Cat: ${escapeHtml(item.reliefCode)}` : 'Claimable'}</span>
+                                            ${hasReceipt ? `<i class="fa-solid fa-paperclip text-indigo-400 ml-1"></i>` : ''}
+                                        </p>
+                                    </div>
+                                </div>
+                                <span class="text-xs font-extrabold text-emerald-600 shrink-0">${formatCurrency(item.amount)}</span>
                             </div>
-                            <p class="text-[10px] text-slate-400 mt-0.5">
-                                ${item.reliefCode ? `Category: ${escapeHtml(item.reliefCode)}` : 'Tax relief claimable'}
-                                ${item.receiptId ? ` &bull; <i class="fa-solid fa-paperclip text-indigo-400" title="Receipt Uploaded"></i>` : ''}
-                            </p>
+                            <!-- Spacer to allow scrolling left to reveal buttons -->
+                            <div class="${spacerWidth} shrink-0 snap-end"></div>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs font-extrabold text-emerald-600">${formatCurrency(item.amount)}</span>
-                        <div class="flex items-center gap-1 opacity-80 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                            ${item.receiptId ? `<button onclick="viewReceipt('${item.receiptId}')" class="w-7 h-7 rounded-lg hover:bg-indigo-50 text-indigo-500 hover:text-indigo-700 flex items-center justify-center" title="View Receipt"><i class="fa-solid fa-eye text-[10px]"></i></button>` : ''}
-                            <button onclick="editItem('${item.id}')" class="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center"><i class="fa-solid fa-pen text-[10px]"></i></button>
-                            <button onclick="deleteItem('${item.id}')" class="w-7 h-7 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 flex items-center justify-center"><i class="fa-solid fa-trash text-[10px]"></i></button>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         // Settings Handlers
