@@ -1115,32 +1115,32 @@
             }
 
             container.innerHTML = expenses.map(item => `
-                <div class="relative w-full rounded-2xl bg-slate-200 overflow-hidden">
-                    <!-- Action Buttons Background Layer -->
-                    <div class="absolute right-0 top-0 bottom-0 flex items-center justify-end px-3 gap-1.5 z-0">
-                        <button onclick="editItem('${item.id}')" class="w-8 h-8 rounded-xl bg-white text-slate-500 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-pen text-[10px]"></i></button>
-                        <button onclick="deleteItem('${item.id}')" class="w-8 h-8 rounded-xl bg-rose-50 text-rose-500 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                <div class="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm flex items-center gap-3 transition-all hover:border-slate-300">
+                    <!-- Icon -->
+                    <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-receipt text-sm"></i>
                     </div>
                     
-                    <!-- Swipeable Foreground Card -->
-                    <div class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar relative z-10 w-full h-full">
-                        <div class="w-full shrink-0 snap-start bg-white border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between shadow-sm">
-                            <div class="flex items-center gap-3 min-w-0 flex-1 pr-3">
-                                <div class="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
-                                    <i class="fa-solid fa-receipt text-xs"></i>
-                                </div>
-                                <div class="min-w-0 flex-1">
-                                    <div class="flex items-center gap-2">
-                                        <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(item.title)}</h4>
-                                        <span class="text-[9px] font-semibold bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full shrink-0">${item.category}</span>
-                                    </div>
-                                    <p class="text-[10px] text-slate-400 mt-0.5 truncate">${item.date || ''}${item.notes ? ` • ${escapeHtml(item.notes)}` : ''}</p>
-                                </div>
-                            </div>
+                    <!-- Content Body -->
+                    <div class="flex-1 min-w-0 flex flex-col justify-center">
+                        <!-- Top Row: Title & Amount -->
+                        <div class="flex items-center justify-between gap-2 mb-1">
+                            <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(item.title)}</h4>
                             <span class="text-xs font-extrabold text-slate-900 shrink-0">${formatCurrency(item.amount)}</span>
                         </div>
-                        <!-- Spacer to allow scrolling left to reveal the 2 buttons underneath -->
-                        <div class="w-[96px] shrink-0 snap-end"></div>
+                        
+                        <!-- Bottom Row: Meta & Actions -->
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-1.5 min-w-0">
+                                <span class="text-[9px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded shrink-0">${item.category}</span>
+                                <p class="text-[9px] text-slate-400 truncate">${item.date || ''}${item.notes ? ` • ${escapeHtml(item.notes)}` : ''}</p>
+                            </div>
+                            <!-- Direct Action Buttons -->
+                            <div class="flex items-center gap-1 shrink-0">
+                                <button onclick="editItem('${item.id}')" class="w-7 h-7 rounded-lg bg-slate-50 hover:bg-slate-200 text-slate-400 flex items-center justify-center transition-colors"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                                <button onclick="deleteItem('${item.id}')" class="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-400 flex items-center justify-center transition-colors"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `).join('');
@@ -1165,32 +1165,29 @@
             container.innerHTML = commits.map(item => {
                 const isPaid = item.status === 'Paid';
                 return `
-                    <div class="relative w-full rounded-2xl bg-slate-200 overflow-hidden">
-                        <!-- Action Buttons Background Layer -->
-                        <div class="absolute right-0 top-0 bottom-0 flex items-center justify-end px-3 gap-1.5 z-0">
-                            <button onclick="editItem('${item.id}')" class="w-8 h-8 rounded-xl bg-white text-slate-500 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-pen text-[10px]"></i></button>
-                            <button onclick="deleteItem('${item.id}')" class="w-8 h-8 rounded-xl bg-rose-50 text-rose-500 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-trash text-[10px]"></i></button>
-                        </div>
+                    <div class="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm flex items-center gap-3 transition-all hover:border-slate-300">
+                        <!-- Interactive Icon -->
+                        <button onclick="toggleCommitStatus('${item.id}')" class="w-10 h-10 rounded-xl ${isPaid ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'} flex items-center justify-center shrink-0 active:scale-95 transition-transform" title="Toggle status">
+                            <i class="fa-solid ${isPaid ? 'fa-check' : 'fa-clock'} text-sm"></i>
+                        </button>
                         
-                        <!-- Swipeable Foreground Card -->
-                        <div class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar relative z-10 w-full h-full">
-                            <div class="w-full shrink-0 snap-start bg-white border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between shadow-sm">
-                                <div class="flex items-center gap-3 min-w-0 flex-1 pr-3">
-                                    <button onclick="toggleCommitStatus('${item.id}')" class="w-9 h-9 rounded-xl ${isPaid ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'} flex items-center justify-center shrink-0 active:scale-90 transition-transform" title="Toggle status">
-                                        <i class="fa-solid ${isPaid ? 'fa-check' : 'fa-clock'} text-xs"></i>
-                                    </button>
-                                    <div class="min-w-0 flex-1">
-                                        <div class="flex items-center gap-2">
-                                            <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(item.title)}</h4>
-                                            <span class="text-[9px] font-semibold ${isPaid ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'} px-2 py-0.5 rounded-full shrink-0">${item.status}</span>
-                                        </div>
-                                        <p class="text-[10px] text-slate-400 mt-0.5 truncate">${item.category} • Due <strong>${item.dueDate || '-'}th</strong></p>
-                                    </div>
-                                </div>
+                        <!-- Content Body -->
+                        <div class="flex-1 min-w-0 flex flex-col justify-center">
+                            <div class="flex items-center justify-between gap-2 mb-1">
+                                <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(item.title)}</h4>
                                 <span class="text-xs font-extrabold text-slate-900 shrink-0">${formatCurrency(item.amount)}</span>
                             </div>
-                            <!-- Spacer to allow scrolling left to reveal the 2 buttons underneath -->
-                            <div class="w-[96px] shrink-0 snap-end"></div>
+                            
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-1.5 min-w-0">
+                                    <span class="text-[9px] font-bold ${isPaid ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'} px-1.5 py-0.5 rounded shrink-0">${item.status}</span>
+                                    <p class="text-[9px] text-slate-400 truncate">${item.category} • Due ${item.dueDate || '-'}th</p>
+                                </div>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <button onclick="editItem('${item.id}')" class="w-7 h-7 rounded-lg bg-slate-50 hover:bg-slate-200 text-slate-400 flex items-center justify-center transition-colors"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                                    <button onclick="deleteItem('${item.id}')" class="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-400 flex items-center justify-center transition-colors"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -1218,40 +1215,35 @@
 
             container.innerHTML = reliefs.map(item => {
                 const hasReceipt = !!item.receiptId;
-                // Spacer width dynamically adjusts based on whether we have 3 buttons (View, Edit, Delete) or 2 (Edit, Delete)
-                const spacerWidth = hasReceipt ? 'w-[136px]' : 'w-[96px]';
                 
                 return `
-                    <div class="relative w-full rounded-2xl bg-slate-200 overflow-hidden">
-                        <!-- Action Buttons Background Layer -->
-                        <div class="absolute right-0 top-0 bottom-0 flex items-center justify-end px-3 gap-1.5 z-0">
-                            ${hasReceipt ? `<button onclick="viewReceipt('${item.receiptId}')" class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-eye text-[10px]"></i></button>` : ''}
-                            <button onclick="editItem('${item.id}')" class="w-8 h-8 rounded-xl bg-white text-slate-500 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-pen text-[10px]"></i></button>
-                            <button onclick="deleteItem('${item.id}')" class="w-8 h-8 rounded-xl bg-rose-50 text-rose-500 shadow-sm flex items-center justify-center active:scale-95 transition-transform"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                    <div class="bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm flex items-center gap-3 transition-all hover:border-slate-300">
+                        <!-- Icon -->
+                        <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                            <i class="fa-solid fa-shield-halved text-sm"></i>
                         </div>
                         
-                        <!-- Swipeable Foreground Card -->
-                        <div class="flex overflow-x-auto snap-x snap-mandatory no-scrollbar relative z-10 w-full h-full">
-                            <div class="w-full shrink-0 snap-start bg-white border border-slate-200/80 rounded-2xl p-3.5 flex items-center justify-between shadow-sm">
-                                <div class="flex items-center gap-3 min-w-0 flex-1 pr-3">
-                                    <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-                                        <i class="fa-solid fa-shield-halved text-xs"></i>
-                                    </div>
-                                    <div class="min-w-0 flex-1">
-                                        <div class="flex items-center gap-2">
-                                            <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(item.title)}</h4>
-                                            <span class="text-[9px] font-semibold bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full shrink-0">${item.category}</span>
-                                        </div>
-                                        <p class="text-[10px] text-slate-400 mt-0.5 truncate flex items-center gap-1">
-                                            <span>${item.reliefCode ? `Cat: ${escapeHtml(item.reliefCode)}` : 'Claimable'}</span>
-                                            ${hasReceipt ? `<i class="fa-solid fa-paperclip text-indigo-400 ml-1"></i>` : ''}
-                                        </p>
-                                    </div>
-                                </div>
+                        <!-- Content Body -->
+                        <div class="flex-1 min-w-0 flex flex-col justify-center">
+                            <div class="flex items-center justify-between gap-2 mb-1">
+                                <h4 class="text-xs font-bold text-slate-900 truncate">${escapeHtml(item.title)}</h4>
                                 <span class="text-xs font-extrabold text-emerald-600 shrink-0">${formatCurrency(item.amount)}</span>
                             </div>
-                            <!-- Spacer to allow scrolling left to reveal buttons -->
-                            <div class="${spacerWidth} shrink-0 snap-end"></div>
+                            
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="flex items-center gap-1.5 min-w-0">
+                                    <span class="text-[9px] font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded shrink-0">${item.category}</span>
+                                    <p class="text-[9px] text-slate-400 truncate flex items-center gap-1">
+                                        <span>${item.reliefCode ? escapeHtml(item.reliefCode) : 'Claimable'}</span>
+                                        ${hasReceipt ? `<i class="fa-solid fa-paperclip text-indigo-400 ml-0.5"></i>` : ''}
+                                    </p>
+                                </div>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    ${hasReceipt ? `<button onclick="viewReceipt('${item.receiptId}')" class="w-7 h-7 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-500 flex items-center justify-center transition-colors"><i class="fa-solid fa-eye text-[10px]"></i></button>` : ''}
+                                    <button onclick="editItem('${item.id}')" class="w-7 h-7 rounded-lg bg-slate-50 hover:bg-slate-200 text-slate-400 flex items-center justify-center transition-colors"><i class="fa-solid fa-pen text-[10px]"></i></button>
+                                    <button onclick="deleteItem('${item.id}')" class="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-400 flex items-center justify-center transition-colors"><i class="fa-solid fa-trash text-[10px]"></i></button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 `;
